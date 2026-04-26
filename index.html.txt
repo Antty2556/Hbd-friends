@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HBD Final Version</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <style>
+        :root {
+            --bg: #000000;
+            --blue: #00d2ff;
+            --pink: #ff0055;
+        }
+
+        body, html {
+            margin: 0; padding: 0; min-height: 100vh;
+            font-family: 'Kanit', sans-serif;
+            background: var(--bg); color: white;
+            display: flex; justify-content: center; align-items: center;
+            overflow: hidden; touch-action: manipulation; /* ป้องกันการซูมแบบไม่ตั้งใจในมือถือ */
+        }
+
+        #matrix-canvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1; opacity: 0.5;
+        }
+
+        .container { 
+            text-align: center; width: 85%; max-width: 400px; 
+            display: none; z-index: 10; position: relative; 
+        }
+        .active { display: block; animation: fadeIn 0.8s ease-in; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* ปรับช่องรหัสให้เหมาะกับนิ้วมือ */
+        input[type="password"] {
+            width: 80%;
+            padding: 15px; border-radius: 12px; border: 2px solid var(--blue);
+            background: rgba(0,0,0,0.8); color: white; text-align: center;
+            font-size: 1.2rem; outline: none; margin-bottom: 10px;
+            -webkit-appearance: none; /* ลบสไตล์เดิมของ Safari มือถือ */
+        }
+
+        .wish-btn {
+            background: var(--blue); color: black; border: none;
+            padding: 15px 25px; border-radius: 50px; font-weight: bold;
+            cursor: pointer; font-size: 1rem; margin: 8px 5px;
+            box-shadow: 0 0 15px var(--blue);
+            transition: 0.3s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* ปรับขนาดวงกลมรูปให้พอดีมือถือ */
+        .photo-frame {
+            width: 220px; height: 220px; border: 3px solid var(--blue);
+            border-radius: 50%; overflow: hidden; cursor: pointer;
+            margin: 20px auto; box-shadow: 0 0 25px var(--blue);
+            background: black;
+        }
+        .photo-frame img { width: 100%; height: 100%; object-fit: cover; }
+
+        #timer { font-size: 5rem; color: var(--blue); text-shadow: 0 0 20px var(--blue); }
+        
+        #wish-display { 
+            font-size: 1.2rem; font-weight: bold; margin: 15px 0; 
+            min-height: 60px; text-shadow: 0 0 10px var(--blue);
+            padding: 0 10px;
+        }
+
+        h1 { font-size: 1.8rem; }
+    </style>
+</head>
+<body>
+
+    <canvas id="matrix-canvas"></canvas>
+
+    <div id="page-login" class="container active">
+        <h1>ใส่รหัสผ่าน 🔒</h1>
+        <input type="password" id="pass-input" placeholder="รหัสผ่าน...">
+        <div style="color: #888; font-size: 0.8rem; margin-bottom: 20px;">คำใบ้: วัน+เดือน+ปีเกิด (เช่น 01012569)</div>
+        <button class="wish-btn" onclick="checkPass()">ถัดไป</button>
+    </div>
+
+    <div id="page-timer" class="container">
+        <div id="timer">3</div>
+    </div>
+
+    <div id="page-main" class="container">
+        <h1 id="main-title">HAPPY BIRTHDAY 🎉</h1>
+        <div class="photo-frame" onclick="changePhoto()">
+            <img id="display-img" src="https://dreamengine.in/wp-content/uploads/2021/07/what-is-gif-and-what-are-its-uses-1-2.gif" alt="Friend">
+        </div>
+        
+        <div id="wish-display">สุขสันต์วันเกิดนะ กำมะลอง</div>
+
+        <div class="btn-group">
+            <button class="wish-btn" onclick="showWish()">สุ่มคำอวยพร 🎁</button>
+            <button class="wish-btn" style="background: var(--pink); color: white; box-shadow: 0 0 15px var(--pink);" onclick="tellSomething()">สิ่งที่อยากจะบอก 💬</button>
+        </div>
+    </div>
+
+    <audio id="music1" loop preload="auto"><source src="music1.mp3"></audio>
+    <audio id="music2" preload="auto"><source src="music2.mp3"></audio>
+    <audio id="music3" loop preload="auto"><source src="music3.mp3"></audio>
+
+    <script>
+        const CORRECT_PASS = "27042555"; 
+        const photos = ["https://www.image2url.com/r2/default/images/1777210695445-7bff6609-6c95-4e7c-9263-7024119c7775.jpeg", "https://www.image2url.com/r2/default/images/1777210779841-751f1616-7dcc-43d4-afb5-e909c8803122.jpeg"];
+        const wishes = ["มีความสุขมากๆนะจ๊ะ", "ร่างกายแข็งแรงยกบ้านได้", "เป็นเพื่อนเราไปนานเด้ออ", "บินได้", "มี10ขา10แขน"];
+        let photoIdx = 0;
+
+        function initMatrix() {
+            const canvas = document.getElementById('matrix-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            const letters = "HBD-KAMLAI-🎉-2704-";
+            const fontSize = 14;
+            const columns = canvas.width / fontSize;
+            const drops = Array(Math.floor(columns)).fill(1);
+            function draw() {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.1)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#00d2ff"; ctx.font = fontSize + "px arial";
+                for (let i = 0; i < drops.length; i++) {
+                    const text = letters[Math.floor(Math.random() * letters.length)];
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+                    drops[i]++;
+                }
+            }
+            setInterval(draw, 33);
+        }
+
+        function checkPass() {
+            if (document.getElementById('pass-input').value === CORRECT_PASS) {
+                initMatrix();
+                showPage('page-login', 'page-timer');
+                startCountdown();
+            } else { alert("ไม่ถูกค่ะอีโง่"); }
+        }
+
+        function startCountdown() {
+            let count = 3;
+            const timerDiv = document.getElementById('timer');
+            const interval = setInterval(() => {
+                count--; timerDiv.innerText = count;
+                if (count <= 0) {
+                    clearInterval(interval);
+                    showPage('page-timer', 'page-main');
+                    playMusic('music1');
+                    confetti({ particleCount: 100, spread: 60, colors: ['#00d2ff', '#ffffff'] });
+                }
+            }, 1000);
+        }
+
+        function changePhoto() {
+            photoIdx = (photoIdx + 1) % photos.length;
+            document.getElementById('display-img').src = photos[photoIdx];
+        }
+
+        function showWish() {
+            const display = document.getElementById('wish-display');
+            display.innerText = wishes[Math.floor(Math.random() * wishes.length)];
+            confetti({ particleCount: 30, colors: ['#00d2ff'] });
+        }
+
+        function tellSomething() {
+            const display = document.getElementById('wish-display');
+            display.innerText = "เป็นร้านกาแฟที่เล็กมาก...หยอกๆรอแปปห้ามกดอะไร";
+            display.style.color = "#00d2ff";
+            playMusic('music2');
+            confetti({ particleCount: 50, spread: 60, colors: ['#00d2ff'] });
+
+            setTimeout(() => {
+                display.innerText = "รักมึงนะ มึงคือเพื่อนที่ดีที่สุด อยู่คุยกับกูไปนานๆเด้อ (เล็กจริงเล็กสุดๆเล็กมากๆ) 💙";
+                display.style.color = "#ff0055"; 
+                display.style.textShadow = "0 0 15px #ff0055";
+                playMusic('music3');
+                confetti({
+                    particleCount: 150,
+                    spread: 80,
+                    origin: { y: 0.7 },
+                    colors: ['#ff0055', '#ffffff', '#00d2ff']
+                });
+            }, 5000);
+        }
+
+        function playMusic(id) {
+            document.getElementById('music1').pause();
+            document.getElementById('music2').pause();
+            document.getElementById('music3').pause();
+            const music = document.getElementById(id);
+            music.currentTime = 0;
+            music.play().catch(e => console.log("Blocked: Please interact first"));
+        }
+
+        function showPage(oldId, newId) {
+            document.getElementById(oldId).classList.remove('active');
+            document.getElementById(newId).classList.add('active');
+        }
+
+        // จัดการ Resize สำหรับมือถือเวลาหมุนจอ
+        window.addEventListener('resize', () => {
+            const canvas = document.getElementById('matrix-canvas');
+            if(canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+        });
+    </script>
+</body>
+</html>
